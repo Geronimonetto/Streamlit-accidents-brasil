@@ -53,7 +53,7 @@ pip install -r requirements.txt
 Depois de instalar as dependências, você pode rodar o projeto com o Streamlit. Execute o seguinte comando no terminal:
 
 ```bash
-streamlit run app.py
+streamlit run streamlit_app.py
 ```
 
 Onde `app.py` é o nome do arquivo principal do seu projeto. Se o nome do arquivo for diferente, substitua `app.py` pelo nome correto do arquivo.
