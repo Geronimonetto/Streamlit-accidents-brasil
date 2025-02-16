@@ -7,6 +7,9 @@ import plotly.express as px
 import requests
 import plotly.graph_objects as go
 from utils.routes import bandeiras
+from modules.nav import navbar
+
+
 # Baixar o GeoJSON dos estados brasileiros
 geojson_url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson"
 response = requests.get(geojson_url)
@@ -29,7 +32,7 @@ for feature in geojson['features']:
 
 # Configuração do layout do app
 st.set_page_config(page_title="Análise de Acidentes de Trânsito", layout="wide")
-
+navbar()
 # Caminho do arquivo .tar.gz
 tar_path = "./data/accidents_2017_to_2023.tar.gz"
 
@@ -52,17 +55,57 @@ df['data_acidente'] = pd.to_datetime(df['data_inversa'] + " " + df['horario'], f
 df = df.sort_values('data_acidente')
 df['Month'] = df['data_acidente'].apply(lambda x: str(x.year) + "-" + str(x.month))
 
+
 # Sidebar
 st.sidebar.header("Filtros")
-uf_list = df["uf"].unique()
-uf_list = ['Todos os Estados'] + list(uf_list)  # Adiciona a opção "Todos os Estados"
-uf = st.sidebar.selectbox("Estado", uf_list)
 
-# Verificar se o usuário selecionou "Todos os Estados"
-if uf == 'Todos os Estados':
-    df_filtered = df  # Sem filtro aplicado
+# Filtro de UF
+uf_list = df["uf"].unique()
+uf_list = ['Todos os Estados'] + list(uf_list)
+uf = st.sidebar.selectbox("Estado", uf_list)
+# Filtro de Município condicional
+municipio = None
+if uf != 'Todos os Estados':
+    municipios_list = df[df['uf'] == uf]['municipio'].unique()
+    municipios_list = ['Todos os Municípios'] + list(municipios_list)
+    municipio = st.sidebar.selectbox("Município", municipios_list)
+# Filtro de Data
+st.sidebar.header("Filtros de Data")
+min_date = df['data_acidente'].min().date()
+max_date = df['data_acidente'].max().date()
+selected_dates = st.sidebar.date_input(
+    "Selecione o intervalo de datas",
+    value=(min_date, max_date),
+    min_value=min_date,
+    max_value=max_date
+)
+
+# Processar datas selecionadas
+if len(selected_dates) == 2:
+    start_date, end_date = selected_dates
 else:
-    df_filtered = df[df['uf'] == uf]  # Filtra pelos estados selecionados
+    start_date, end_date = min_date, max_date
+
+# Converter para datetime
+start_date = pd.to_datetime(start_date)
+end_date = pd.to_datetime(end_date)
+
+# Aplicar filtros
+df_filtered = df.copy()
+
+# Filtro de UF
+if uf != 'Todos os Estados':
+    df_filtered = df_filtered[df_filtered['uf'] == uf]
+    
+    # Filtro de Município
+    if municipio and municipio != 'Todos os Municípios':
+        df_filtered = df_filtered[df_filtered['municipio'] == municipio]
+
+# Filtro de Data
+df_filtered = df_filtered[
+    (df_filtered['data_acidente'] >= start_date) & 
+    (df_filtered['data_acidente'] <= end_date)
+]
 
 # Exibir a bandeira do estado selecionado (se não for "Todos os Estados")
 if uf != 'Todos os Estados' and uf in bandeiras:
@@ -91,7 +134,7 @@ with st.container():
         )
         subcol2.markdown(
             f'<div style="background-color: #222538; padding: 10px; border-radius: 5px;">'
-            f'<h3 style="color: white; font-size: 16px;">Taxa de Mortalidade</h3>'
+            f'<h3 style="color: white; font-size: 16px;">Quantidade de mortos em acidentes</h3>'
             f'<p style="color: white; font-size: 30px; font-weight: bold;">{df_mortos}</p></div>',
             unsafe_allow_html=True
         )
