@@ -6,7 +6,7 @@ import tarfile
 import plotly.express as px
 import requests
 import plotly.graph_objects as go
-from utils.routes import bandeiras, estado_nome
+from utils.routes import bandeiras
 from modules.nav import navbar
 
 
@@ -15,7 +15,29 @@ geojson_url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/
 response = requests.get(geojson_url)
 geojson = response.json()
 
+# Criar um dicionário de conversão do nome dos estados no GeoJSON
+estado_nome = {
+    'Acre': 'AC', 'Alagoas': 'AL', 'Amapá': 'AP', 'Amazonas': 'AM', 'Bahia': 'BA', 'Ceará': 'CE',
+    'Distrito Federal': 'DF', 'Espírito Santo': 'ES', 'Goiás': 'GO', 'Maranhão': 'MA', 'Mato Grosso': 'MT',
+    'Mato Grosso do Sul': 'MS', 'Minas Gerais': 'MG', 'Pará': 'PA', 'Paraíba': 'PB', 'Paraná': 'PR',
+    'Pernambuco': 'PE', 'Piauí': 'PI', 'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN',
+    'Rio Grande do Sul': 'RS', 'Rondônia': 'RO', 'Roraima': 'RR', 'Santa Catarina': 'SC',
+    'São Paulo': 'SP', 'Sergipe': 'SE', 'Tocantins': 'TO'
+}
 
+# Tamanho da população de cada estado - Fonte: https://www.cnnbrasil.com.br/nacional/brasil-tem-2125-milhoes-de-habitantes-diz-ibge/#goog_rewarded
+populacao = {
+    "SP": 45973194, "MG": 21322691, "RJ": 17219679, "BA": 14850513, "PR": 11824665,
+    "RS": 11229915, "PE": 9539029, "CE": 9233656, "PA": 8664306, "SC": 8058441,
+    "GO": 7350483, "MA": 7010960, "AM": 4281209, "PB": 4145040, "ES": 4102129,
+    "MT": 3836399, "RN": 3446071, "PI": 3375646, "AL": 3220104, "DF": 2982818,
+    "MS": 2901895, "SE": 2291077, "RO": 1746227, "TO": 1577342, "AC": 880631,
+    "AP": 802837, "RR": 716793
+}
+
+# Criar dataframe com nomes, siglas e populações dos estados
+estados = pd.DataFrame(estado_nome.items(), columns=['estado', 'sigla'])
+estados['populacao'] = estados['sigla'].map(populacao)
 
 # Ajustar os nomes no GeoJSON para corresponder ao DataFrame
 for feature in geojson['features']:
@@ -47,47 +69,76 @@ df['data_acidente'] = pd.to_datetime(df['data_inversa'] + " " + df['horario'], f
 df = df.sort_values('data_acidente')
 df['Month'] = df['data_acidente'].apply(lambda x: str(x.year) + "-" + str(x.month))
 
+# Acrescentar dados de acidentes e mortes + taxas no dataframe estados
+estados['Acidentes'] = estados['sigla'].map(df['data_inversa'].groupby(df['uf']).count())
+estados['Mortos'] = estados['sigla'].map(df['mortos'].groupby(df['uf']).sum())
+estados['tx_acidentalidade_1k'] = estados['Acidentes'] / estados['populacao'] * 1000
+estados['tx_mortalidade_1k'] = estados['Mortos'] / estados['populacao'] * 1000
 
 # Sidebar
 st.sidebar.header("Filtros")
 
-# Filtro de UF
-uf_list = df["uf"].unique()
-uf_list = ['Todos os Estados'] + list(uf_list)
-uf = st.sidebar.selectbox("Estado", uf_list)
-# Filtro de Município condicional
-municipio = None
-if uf != 'Todos os Estados':
-    municipios_list = df[df['uf'] == uf]['municipio'].unique()
-    municipios_list = ['Todos os Municípios'] + list(municipios_list)
-    municipio = st.sidebar.selectbox("Município", municipios_list)
-# Filtro de Data
-st.sidebar.header("Filtros de Data")
+# Criar dicionário de mapeamento sigla -> nome completo
+mapa_estados = dict(zip(estados["sigla"], estados["estado"]))
+uf_list = sorted([mapa_estados[sigla] for sigla in df["uf"].unique()])
+uf_list = ['Brasil'] + list(uf_list)
+
+# Definir intervalo de data possível de ser selecionado
 min_date = df['data_acidente'].min().date()
 max_date = df['data_acidente'].max().date()
-selected_dates = st.sidebar.date_input(
-    "Selecione o intervalo de datas",
-    value=(min_date, max_date),
-    min_value=min_date,
-    max_value=max_date
-)
 
-# Processar datas selecionadas
-if len(selected_dates) == 2:
-    start_date, end_date = selected_dates
-else:
-    start_date, end_date = min_date, max_date
+# Função de limpar filtros
+def reset():
+    st.session_state.selected_uf = "Brasil"
+    st.session_state.municipio = "Todos os Municípios"
+    st.session_state.start_date = min_date
+    st.session_state.end_date = max_date
+    print('Limpar Filtros')
+
+# Estados e Datas com estados padrão
+if "selected_uf" not in st.session_state:
+    st.session_state.selected_uf = "Brasil"
+if "municipio" not in st.session_state:
+    st.session_state.municipio = "Todos os Municípios"
+if "start_date" not in st.session_state:
+    st.session_state.start_date = df["data_acidente"].min().date()
+if "end_date" not in st.session_state:
+    st.session_state.end_date = df["data_acidente"].max().date()
+
+# Filtro de UF
+selected_uf = st.sidebar.selectbox("Estado", uf_list, index=uf_list.index(st.session_state.selected_uf), key = 'selected_uf')
+
+# Filtro de Município (somente se um estado for selecionado)
+municipio = None
+if selected_uf != 'Brasil':
+    uf_sigla = estado_nome[selected_uf]  # Pegamos a sigla usando o dicionário
+    municipios_list = sorted(df[df['uf'] == uf_sigla]['municipio'].unique())
+    municipios_list = ['Todos os Municípios'] + list(municipios_list)
+    
+    municipio = st.sidebar.selectbox("Município", municipios_list, index=municipios_list.index(st.session_state.municipio), key = 'municipio')
+
+# Filtro de Data
+st.sidebar.header("Selecione o intervalo de Data")
+
+# Criar colunas para exibir os campos lado a lado
+col1, col2 = st.sidebar.columns(2)
+start_date = col1.date_input("**Início**", value=min_date, min_value=min_date, max_value=max_date, key="start_date")
+end_date = col2.date_input("**Fim**", value=max_date, min_value=min_date, max_value=max_date, key="end_date")
 
 # Converter para datetime
 start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
 
+# Botão de limpar filtros
+st.sidebar.button("Limpar Filtros", on_click=reset)
+
 # Aplicar filtros
 df_filtered = df.copy()
 
 # Filtro de UF
-if uf != 'Todos os Estados':
-    df_filtered = df_filtered[df_filtered['uf'] == uf]
+if selected_uf != 'Brasil':
+    uf_sigla = estado_nome[selected_uf]  # Pegamos a sigla usando o dicionário
+    df_filtered = df_filtered[df_filtered['uf'] == uf_sigla]
     
     # Filtro de Município
     if municipio and municipio != 'Todos os Municípios':
@@ -99,9 +150,13 @@ df_filtered = df_filtered[
     (df_filtered['data_acidente'] <= end_date)
 ]
 
-# Exibir a bandeira do estado selecionado (se não for "Todos os Estados")
-if uf != 'Todos os Estados' and uf in bandeiras:
-    st.sidebar.image(bandeiras[uf], caption=f"Bandeira de {uf}")
+# Exibir a bandeira do estado selecionado (se não for "Brasil")
+if selected_uf != 'Brasil':
+    uf_sigla = estado_nome[selected_uf]  # Pegamos a sigla usando o dicionário
+    st.sidebar.image(bandeiras[uf_sigla], caption=f"Bandeira de {selected_uf}")
+# Exibir a bandeira do Brasil, se não tiver um estado selecionado
+else:
+    st.sidebar.image(bandeiras[selected_uf], caption=f"Bandeira do Brasil")
 # Calcular o total de acidentes no DataFrame filtrado
 df_total_acidentes = float(df_filtered.value_counts().sum())
 # Contar a quantidade de acidentes por dia
@@ -111,17 +166,27 @@ acidentes_por_dia = df_filtered.groupby(df_filtered['data_acidente'].dt.date).si
 media_acidentes_por_dia = acidentes_por_dia.mean()
 media_acidentes_por_dia = f"{media_acidentes_por_dia:.2f}"
 df_mortos = df_filtered[df_filtered['mortos'] != 0].value_counts().sum()
+
+# Calcular taxa de acidentalidade e mortalidade Brasil
+if selected_uf == 'Brasil':
+    pop = estados['populacao'].sum()
+else:
+    pop = estados['populacao'][estados['estado'] == selected_uf].values[0]
+tx_acid = df_total_acidentes / pop * 1000
+tx_mort = df_mortos / pop * 1000
+
+# KPIs
 with st.container():
     # Criando uma coluna única
     col1 = st.columns(1)
     with col1[0]:
-        subcol1, subcol2, subcol3 = st.columns(3)
+        subcol1, subcol2, subcol3, subcol4 = st.columns(4)
         
         # Ajustando o estilo de cada subcoluna
         subcol1.markdown(
             f'<div style="background-color: #222538; padding: 10px; border-radius: 5px;">'
             f'<h3 style="color: white; font-size: 16px;">Quantidade de acidentes</h3>'
-            f'<p style="color: white; font-size: 30px; font-weight: bold;">{df_total_acidentes}</p></div>',
+            f'<p style="color: white; font-size: 30px; font-weight: bold;">{df_total_acidentes:.0f}</p></div>',
             unsafe_allow_html=True
         )
         subcol2.markdown(
@@ -136,7 +201,13 @@ with st.container():
             f'<p style="color: white; font-size: 30px; font-weight: bold;">{media_acidentes_por_dia}</p></div>',
             unsafe_allow_html=True
         )
-    
+        subcol4.markdown(
+            f'<div style="background-color: #222538; padding: 10px; border-radius: 5px;">'
+            f'<h3 style="color: white; font-size: 16px;">Taxa de acidentalidade em BRs</h3>'
+            f'<p style="color: white; font-size: 30px; font-weight: bold;">{tx_acid:.2f} <span style="font-size: 14px; font-weight: normal;">acidentes por mil habitantes</span></p></div>',
+            unsafe_allow_html=True
+        )
+
     # Adicionando um pequeno espaço entre os containers
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -203,6 +274,13 @@ with st.container():
             # Criando o gráfico de barras horizontal
             df_dias = df_filtered.groupby("fase_dia").size().reset_index(name="Quantidade")
 
+            # Identificar a maior barra
+            maior_barra_index = df_dias["Quantidade"].idxmax()
+
+            # Adicionar o texto de forma condicional para as barras
+            text_position = ['outside'] * len(df_dias)  # Todos os rótulos inicialmente fora
+            text_position[maior_barra_index] = 'inside'  # Alterar o rótulo da maior barra para dentro
+
             fig_barras = go.Figure(go.Bar(
                 y=df_dias["fase_dia"],
                 x=df_dias["Quantidade"],
@@ -213,7 +291,7 @@ with st.container():
                     showscale=False
                 ),
                 text=df_dias["Quantidade"],
-                textposition='outside',
+                textposition=text_position,  # Aplicar as posições do texto
             ))
 
             fig_barras.update_layout(
@@ -247,29 +325,50 @@ with st.container():
 
     col3, col4 = st.columns(2)
     with col3:
-        # Criar gráfico de linha com altura fixa
-        fig1 = px.line(
-            df_anos,
-            x=df_anos.index,
-            y=['Quantidade de Acidentes', 'Quantidade de Mortes'],
-            markers=True,  # Para adicionar marcadores nos pontos
-            color_discrete_map={
-                'Quantidade de Acidentes': '#fcde9c',  # Cor personalizada
-                'Quantidade de Mortes': '#e24c70'      # Cor personalizada
-            }
-            
-        )
+        tab1, tab2 = st.tabs(['Acidentes', 'Mortes'])
+        with tab1:
+            # Criar gráfico de linha com altura fixa
+            fig1 = px.line(
+                df_anos,
+                x=df_anos.index,
+                y='Quantidade de Acidentes',
+                markers=True,  # Para adicionar marcadores nos pontos
+                color_discrete_map={'Quantidade de Acidentes': '#fcde9c'}  # Cor personalizada
+            )
 
-        fig1.update_layout(height=500, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
-            "text": "Evolução de Acidentes e Mortes por Ano",
-            "x": 0.5,  # Centraliza o título
-            "y": 0.95,  # Ajusta a posição vertical
-            "xanchor": "center",
-            "yanchor": "top",
-            "font": dict(size=20, family="Arial", color="white")  # Aumentando tamanho e mudando fonte
-        })  # Altura fixa
+            fig1.update_layout(height=445, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
+                "text": "Evolução de Acidentes por Ano",
+                "x": 0.5,  # Centraliza o título
+                "y": 0.95,  # Ajusta a posição vertical
+                "xanchor": "center",
+                "yanchor": "top",
+                "font": dict(size=20, family="Arial", color="white")  # Aumentando tamanho e mudando fonte
+            })  # Altura fixa
 
-        col3.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, use_container_width=True)
+        with tab2:
+            # Criar gráfico de linha com altura fixa
+            fig3 = px.line(
+                df_anos,
+                x=df_anos.index,
+                y='Quantidade de Mortes',
+                markers=True,  # Para adicionar marcadores nos pontos
+                color_discrete_map={
+                    'Quantidade de Mortes': '#e24c70',  # Cor personalizada
+                }
+                
+            )
+
+            fig3.update_layout(height=445, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
+                "text": "Evolução de Mortes por Ano",
+                "x": 0.5,  # Centraliza o título
+                "y": 0.95,  # Ajusta a posição vertical
+                "xanchor": "center",
+                "yanchor": "top",
+                "font": dict(size=20, family="Arial", color="white")  # Aumentando tamanho e mudando fonte
+            })  # Altura fixa
+
+            st.plotly_chart(fig3, use_container_width=True)
     with col4:
         # Agrupar os dados por dia da semana e contar os acidentes
         day_accidents = df_filtered['dia_semana'].value_counts().reset_index()
