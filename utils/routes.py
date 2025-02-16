@@ -1,5 +1,6 @@
 # Dicionário de bandeiras (Wikimedia)
 bandeiras = {
+    "Brasil": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Flag_of_Brazil.svg/1280px-Flag_of_Brazil.svg.png",
     "AC": "https://upload.wikimedia.org/wikipedia/commons/4/4c/Bandeira_do_Acre.svg",
     "AL": "https://upload.wikimedia.org/wikipedia/commons/8/88/Bandeira_de_Alagoas.svg",
     "AP": "https://upload.wikimedia.org/wikipedia/commons/0/0c/Bandeira_do_Amapá.svg",
