@@ -1,3 +1,5 @@
+# %%
+
 import streamlit as st
 import pandas as pd
 import tarfile
@@ -107,7 +109,7 @@ if "end_date" not in st.session_state:
 selected_uf = st.sidebar.selectbox("Estado", uf_list, index=uf_list.index(st.session_state.selected_uf), key = 'selected_uf')
 
 # Filtro de Município (somente se um estado for selecionado)
-municipio = None
+# municipio = None
 if selected_uf != 'Brasil':
     uf_sigla = estado_nome[selected_uf]  # Pegamos a sigla usando o dicionário
     municipios_list = sorted(df[df['uf'] == uf_sigla]['municipio'].unique())
@@ -139,7 +141,7 @@ if selected_uf != 'Brasil':
     df_filtered = df_filtered[df_filtered['uf'] == uf_sigla]
     
     # Filtro de Município
-    if municipio and municipio != 'Todos os Municípios':
+    if municipio != 'Todos os Municípios':
         df_filtered = df_filtered[df_filtered['municipio'] == municipio]
 
 # Filtro de Data
@@ -158,10 +160,11 @@ else:
 # Calcular o total de acidentes no DataFrame filtrado
 df_total_acidentes = float(df_filtered.value_counts().sum())
 # Contar a quantidade de acidentes por dia
-acidentes_por_dia = df_filtered.groupby(df_filtered['data_acidente'].dt.date).size()
+acidentes_por_dia = df_filtered.groupby(df_filtered['data_acidente'].dt.date).size().sum()
 
 # Calcular a média de acidentes por dia
-media_acidentes_por_dia = acidentes_por_dia.mean()
+qtd_dias = (end_date - start_date).days
+media_acidentes_por_dia = df_total_acidentes / qtd_dias
 media_acidentes_por_dia = f"{media_acidentes_por_dia:.2f}"
 df_mortos = df_filtered[df_filtered['mortos'] != 0].value_counts().sum()
 
@@ -330,11 +333,25 @@ with st.container():
                 df_anos,
                 x=df_anos.index,
                 y='Quantidade de Acidentes',
-                markers=True,  # Para adicionar marcadores nos pontos
-                color_discrete_map={'Quantidade de Acidentes': '#fcde9c'}  # Cor personalizada
+                markers=True  # Para adicionar marcadores nos pontos
+            )
+            # Ajustar a cor da linha manualmente
+            fig1.update_traces(line=dict(color='#fcde9c'), marker=dict(color='#fcde9c'))
+
+            # Calcular a média de acidentes
+            media_acidentes = df_anos['Quantidade de Acidentes'].mean()
+
+            # Adicionar linha horizontal da média
+            fig1.add_hline(
+                y=media_acidentes,
+                line_dash="dash",  # Linha tracejada
+                line_color="#fcde9c",  # Cor branca para contraste
+                annotation_text=f"Média: {media_acidentes:.1f}",
+                annotation_position="top left",
+                annotation_font=dict(size=14, color="#fcde9c")
             )
 
-            fig1.update_layout(height=445, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
+            fig1.update_layout(height=500, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
                 "text": "Evolução de Acidentes por Ano",
                 "x": 0.5,  # Centraliza o título
                 "y": 0.95,  # Ajusta a posição vertical
@@ -350,14 +367,25 @@ with st.container():
                 df_anos,
                 x=df_anos.index,
                 y='Quantidade de Mortes',
-                markers=True,  # Para adicionar marcadores nos pontos
-                color_discrete_map={
-                    'Quantidade de Mortes': '#e24c70',  # Cor personalizada
-                }
-                
+                markers=True  # Para adicionar marcadores nos pontos
+            )
+            # Ajustar a cor da linha manualmente
+            fig3.update_traces(line=dict(color='#e24c70'), marker=dict(color='#e24c70'))
+
+            # Calcular a média de mortes
+            media_mortes = df_anos['Quantidade de Mortes'].mean()
+
+            # Adicionar linha horizontal da média
+            fig3.add_hline(
+                y=media_mortes,
+                line_dash="dash",  # Linha tracejada
+                line_color="#e24c70",  # Cor branca para contraste
+                annotation_text=f"Média: {media_mortes:.1f}",
+                annotation_position="top left",
+                annotation_font=dict(size=14, color="#e24c70")
             )
 
-            fig3.update_layout(height=445, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
+            fig3.update_layout(height=500, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
                 "text": "Evolução de Mortes por Ano",
                 "x": 0.5,  # Centraliza o título
                 "y": 0.95,  # Ajusta a posição vertical
@@ -368,34 +396,158 @@ with st.container():
 
             st.plotly_chart(fig3, use_container_width=True)
     with col4:
-        # Agrupar os dados por dia da semana e contar os acidentes
-        day_accidents = df_filtered['dia_semana'].value_counts().reset_index()
-        day_accidents.columns = ['dia_semana', 'accident_count']
+        tab3, tab4 = st.tabs(['Acidentes por dia da semana', 'Principais causas dos Acidentes'])
+        with tab3:
+            # Agrupar os dados por dia da semana e contar os acidentes
+            day_accidents = df_filtered['dia_semana'].value_counts().reset_index()
+            day_accidents.columns = ['dia_semana', 'accident_count']
 
-        # Ordenar os dias corretamente
-        dias_ordenados = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
-        day_accidents['dia_semana'] = pd.Categorical(day_accidents['dia_semana'], categories=dias_ordenados, ordered=True)
-        day_accidents = day_accidents.sort_values('dia_semana')
+            # Ordenar os dias corretamente
+            dias_ordenados = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
+            day_accidents['dia_semana'] = pd.Categorical(day_accidents['dia_semana'], categories=dias_ordenados, ordered=True)
+            day_accidents = day_accidents.sort_values('dia_semana')
 
-        fig2 = px.bar(
-            day_accidents, 
-            x='dia_semana', 
-            y='accident_count', 
-            text='accident_count', 
-            color='accident_count',
-            color_continuous_scale='sunsetdark',  # Escolha a paleta que você preferir
-            labels={'dia_semana': 'Dia da Semana', 'accident_count': 'Número de Acidentes'} 
+            fig2 = px.bar(
+                day_accidents, 
+                x='dia_semana', 
+                y='accident_count', 
+                text='accident_count', 
+                color='accident_count',
+                color_continuous_scale='sunsetdark', 
+                labels={'dia_semana': 'Dia da Semana', 'accident_count': 'Número de Acidentes'} 
+            )
+
+            fig2.update_traces(textposition='outside')
+            fig2.update_layout(height=500, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
+                "text": "Frequência de acidentes por dia da semana",
+                "x": 0.5,  # Centraliza o título
+                "y": 0.95,  # Ajusta a posição vertical
+                "xanchor": "center",
+                "yanchor": "top",
+                "font": dict(size=20, family="Arial", color="white")  # Aumentando tamanho e mudando fonte
+            })  # Altura fixa
+            st.plotly_chart(fig2, use_container_width=True)
+        
+        with tab4: # Gráfico das principais causas dos acidentes
+            
+            # Encontrar as 5 principais causas
+            top_5_causas = df_filtered['causa_acidente'].value_counts().head(5)
+
+            # Criar o gráfico de barras
+            fig_causas = px.bar(
+                top_5_causas,
+                y = top_5_causas.index, # Causas dos acidentes
+                x = top_5_causas.values, # Quantidade de acidentes
+                labels = {'x': 'Causas', 'y': 'Quantidade de Acidentes'},  # Rótulos dos eixos
+                title = 'Top 5 Causas de Acidentes',  # Título do gráfico
+                text_auto = True,
+                color_discrete_sequence=px.colors.sequential.Sunset  # Usando uma paleta de cores personalizada
+                # color = top_5_causas.index,  # Colorir barras por causa do acidente
+                , orientation='h'
+            )
+
+            # Adicionar o texto de forma condicional para as barras
+            text_position_causas = ['outside'] * len(top_5_causas)  # Todos os rótulos inicialmente fora
+            text_position_causas[0] = 'inside'  # Alterar o rótulo da maior barra para dentro
+
+            # Removendo a legenda
+            fig_causas.update_traces(textposition=text_position_causas)
+
+            # Ajustando o layout do gráfico
+            fig_causas.update_layout(
+                height=500,
+                paper_bgcolor="#222538",
+                plot_bgcolor="#222538",
+                font=dict(color="white"),
+                title={
+                    "x": 0.5,  # Centraliza o título
+                    "y": 0.95,
+                    "xanchor": "center",
+                    "yanchor": "top",
+                    "font": dict(size=20, family="Arial", color="white")
+                }
+            )
+
+            # Exibir o gráfico no Streamlit
+            st.plotly_chart(fig_causas, use_container_width=True)
+
+with st.container():
+    tab5, tab6 = st.tabs(['Acidentes por Habitantes', 'Mortes por Habitantes'])
+
+    with tab5:
+        # Criar gráfico de linha com altura fixa
+        fig_acidentes = px.line(
+            estados,
+            x='sigla',
+            y='tx_acidentalidade_1k',
+            markers=True  # Para adicionar marcadores nos pontos
+        )
+        # Ajustar a cor da linha manualmente
+        fig_acidentes.update_traces(line=dict(color='#fcde9c'), marker=dict(color='#fcde9c'))
+
+        # Calcular a média de mortes
+        media_tx_acid = estados["tx_acidentalidade_1k"].mean()
+
+        # Adicionar linha horizontal da média
+        fig_acidentes.add_hline(
+            y=media_tx_acid,
+            line_dash="dash",  # Linha tracejada
+            line_color="#fcde9c",  # Cor branca para contraste
+            annotation_text=f"Média: {media_tx_acid:.2f}",
+            annotation_position="top left",
+            annotation_font=dict(size=14, color="#fcde9c")
         )
 
-        fig2.update_traces(textposition='outside')
-        fig2.update_layout(height=500, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
-            "text": "Frequência de acidentes por dia da semana",
+        fig_acidentes.update_layout(height=500, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
+            "text": "Taxa de acidentalidade em BRs per capita",
             "x": 0.5,  # Centraliza o título
             "y": 0.95,  # Ajusta a posição vertical
             "xanchor": "center",
             "yanchor": "top",
             "font": dict(size=20, family="Arial", color="white")  # Aumentando tamanho e mudando fonte
-        })  # Altura fixa
-        col4.plotly_chart(fig2, use_container_width=True)
+        },
+        xaxis_title="Estado (UF)",  # Título do eixo X
+        yaxis_title="Taxa de Acidentalidade por mil Habitantes",  # Título do eixo Y
+        font=dict(color="white")
+        )
 
+        st.plotly_chart(fig_acidentes, use_container_width=True)
 
+    with tab6:
+        # Gráfico de mortes por 1k Habitantes
+        fig_mortes = px.line(
+            estados,
+            x='sigla',
+            y='tx_mortalidade_1k',
+            markers=True  # Para adicionar marcadores nos pontos
+        )
+        # Ajustar a cor da linha manualmente
+        fig_mortes.update_traces(line=dict(color='#e24c70'), marker=dict(color='#e24c70'))
+
+        # Calcular a média de mortes
+        media_tx_mort = estados["tx_mortalidade_1k"].mean()
+
+        # Adicionar linha horizontal da média
+        fig_mortes.add_hline(
+            y=media_tx_mort,
+            line_dash="dash",  # Linha tracejada
+            line_color="#e24c70",  # Cor branca para contraste
+            annotation_text=f"Média: {media_tx_mort:.2f}",
+            annotation_position="top left",
+            annotation_font=dict(size=14, color="#e24c70")
+        )
+
+        fig_mortes.update_layout(height=500, paper_bgcolor="#222538", plot_bgcolor="#222538", title={
+            "text": "Taxa de mortalidade por acidentes em BRs per capita",
+            "x": 0.5,  # Centraliza o título
+            "y": 0.95,  # Ajusta a posição vertical
+            "xanchor": "center",
+            "yanchor": "top",
+            "font": dict(size=20, family="Arial", color="white")  # Aumentando tamanho e mudando fonte
+        },
+        xaxis_title="Estado (UF)",  # Título do eixo X
+        yaxis_title="Taxa de Mortalidade por acidentes por mil Habitantes",  # Título do eixo Y
+        font=dict(color="white")
+        )
+
+        st.plotly_chart(fig_mortes, use_container_width=True)
