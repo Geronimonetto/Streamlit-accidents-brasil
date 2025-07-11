@@ -1,5 +1,4 @@
-Claro! Aqui está um exemplo de `README.md` para o seu projeto com as instruções de como criar um ambiente virtual, instalar as dependências e rodar o projeto Streamlit:
-
+# Acidentes nas estradas Brasileiras
 ```markdown
 # Projeto Streamlit - Análise de Acidentes
 
